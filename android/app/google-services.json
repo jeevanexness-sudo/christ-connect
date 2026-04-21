@@ -12,7 +12,20 @@
           "package_name": "com.example.christ_connect"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "286239149141-dg1v1q116gifi41dkvju8cuph8ttv449.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.christ_connect",
+            "certificate_hash": "bbf2618c0827f9a6178907daec7406f80e63dce9"
+          }
+        },
+        {
+          "client_id": "286239149141-itorpnvg980vbdfhgf780bc99rglpph5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDSghkp1w87PbcQK8cljeIhyTtyBBb5E0E"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "286239149141-itorpnvg980vbdfhgf780bc99rglpph5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
