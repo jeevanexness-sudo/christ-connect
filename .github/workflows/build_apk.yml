@@ -23,6 +23,44 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
 
+      - name: Print SHA1 fingerprint
+        run: |
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android 2>/dev/null | grep SHA1 || echo "Keystore not found"
+
+      - name: Create google-services.json
+        run: |
+          cat > android/app/google-services.json << 'JSON'
+          {
+            "project_info": {
+              "project_number": "YOUR_PROJECT_NUMBER",
+              "project_id": "YOUR_PROJECT_ID",
+              "storage_bucket": "YOUR_PROJECT_ID.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:YOUR_PROJECT_NUMBER:android:YOUR_APP_ID",
+                  "android_client_info": {
+                    "package_name": "com.example.christ_connect"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [{"current_key": "YOUR_API_KEY"}],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+
       - run: flutter pub get
 
       - run: flutter build apk --debug --no-shrink
