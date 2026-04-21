@@ -92,9 +92,11 @@ class _KaraokeScreenState extends State<KaraokeScreen> {
         CCIconBtn(
           icon: Icons.admin_panel_settings_outlined,
           iconColor: AppColors.gold,
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const AdminSongsScreen())),
-        ),
+         onTap: () {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text("Admin panel coming soon")),
+  );
+},
       ]),
     );
   }
