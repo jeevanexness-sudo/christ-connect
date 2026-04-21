@@ -733,8 +733,7 @@ class _AddSongSheetState extends State<_AddSongSheet> {
     setState(() { _submitting = true; _error = null; });
     try {
       final uid  = FirebaseAuth.instance.currentUser?.uid ?? '';
-      final ytId = SongModel._extractId(_ytCtrl.text.trim());
-
+      final ytId = extractYouTubeId(_ytCtrl.text.trim());
       // Parse lyrics (each line = one lyric)
       final lines = _lyricsCtrl.text.trim().split('\n')
           .where((l) => l.trim().isNotEmpty)
@@ -924,4 +923,18 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+String extractYouTubeId(String url) {
+  try {
+    final uri = Uri.parse(url);
+
+    if (uri.host.contains('youtu.be')) {
+      return uri.pathSegments.first;
+    } else if (uri.host.contains('youtube.com')) {
+      return uri.queryParameters['v'] ?? '';
+    }
+  } catch (e) {
+    return '';
+  }
+  return '';
 }
