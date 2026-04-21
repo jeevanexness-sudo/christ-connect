@@ -16,14 +16,10 @@ class AppColors {
 
   // Accents
   static const Color blue     = Color(0xFF2B5CE6);
-  static const Color blueDark = Color(0xFF1A3FA8);
   static const Color violet   = Color(0xFF7C3AED);
   static const Color pink     = Color(0xFFEC4899);
-
-  // Semantic
   static const Color success  = Color(0xFF10B981);
   static const Color danger   = Color(0xFFE24B4A);
-  static const Color warning  = Color(0xFFF59E0B);
 
   // Text
   static const Color white         = Color(0xFFFFFFFF);
@@ -37,11 +33,13 @@ class AppColors {
   static const Color border2 = Color(0x1FFFFFFF);
 
   // Light theme
-  static const Color bgLight       = Color(0xFFF8FAFC);
-  static const Color surfaceLight  = Color(0xFFFFFFFF);
-  static const Color cardLight     = Color(0xFFF1F5F9);
-  static const Color textDark      = Color(0xFF0F172A);
-  static const Color borderLight   = Color(0xFFE2E8F0);
+  static const Color bgLight      = Color(0xFFF8FAFC);
+  static const Color surfaceLight = Color(0xFFFFFFFF);
+  static const Color textDark     = Color(0xFF0F172A);
+  static const Color borderLight  = Color(0xFFE2E8F0);
+
+  // Google brand
+  static const Color googleRed    = Color(0xFFEA4335);
 
   // Gradients
   static const LinearGradient verseGradient = LinearGradient(
@@ -68,5 +66,10 @@ class AppColors {
   static const LinearGradient playerGradient = LinearGradient(
     begin: Alignment.topLeft, end: Alignment.bottomRight,
     colors: [Color(0xFF0E1F46), Color(0xFF0A1530)],
+  );
+  static const LinearGradient authGradient = LinearGradient(
+    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+    colors: [Color(0xFF070D1C), Color(0xFF0C1A38), Color(0xFF070D1C)],
+    stops: [0.0, 0.5, 1.0],
   );
 }

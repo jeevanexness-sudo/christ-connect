@@ -1,22 +1,34 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
 import 'core/app_colors.dart';
 import 'core/app_theme.dart';
 import 'navigation/main_navigation.dart';
+import 'providers/auth_provider.dart' as ap;
+import 'screens/auth/login_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+
+  // Firebase init
+  await Firebase.initializeApp();
+
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
     statusBarBrightness: Brightness.dark,
   ));
-  runApp(const ChristConnectApp());
+
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ap.AuthProvider(),
+      child: const ChristConnectApp(),
+    ),
+  );
 }
 
 class ChristConnectApp extends StatelessWidget {
@@ -27,69 +39,55 @@ class ChristConnectApp extends StatelessWidget {
     return MaterialApp(
       title: 'Christ Connect',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
+      theme:     AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.dark,
-      home: const _Root(),
+      home: const AuthWrapper(),
     );
   }
 }
 
-// ─── Root: splash → main nav ──────────────────────────────────────────────
-class _Root extends StatefulWidget {
-  const _Root();
-
-  @override
-  State<_Root> createState() => _RootState();
-}
-
-class _RootState extends State<_Root> with SingleTickerProviderStateMixin {
-  bool _ready = false;
-  late final AnimationController _fade = AnimationController(
-    vsync: this, duration: const Duration(milliseconds: 480));
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(const Duration(milliseconds: 2600), () {
-      if (!mounted) return;
-      _fade.forward().whenComplete(() {
-        if (mounted) setState(() => _ready = true);
-      });
-    });
-  }
-
-  @override
-  void dispose() { _fade.dispose(); super.dispose(); }
+// ─── Auth Wrapper ─────────────────────────────────────────────────────────
+// Decides whether to show Login or Home screen based on auth state
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    if (_ready) return const MainNavigation();
-    return FadeTransition(
-      opacity: ReverseAnimation(
-        CurvedAnimation(parent: _fade, curve: Curves.easeOut)),
-      child: const _Splash(),
+    return Consumer<ap.AuthProvider>(
+      builder: (ctx, auth, _) {
+        switch (auth.status) {
+          // ── Loading / Unknown ─────────────────────────────────────────────
+          case ap.AuthStatus.unknown:
+          case ap.AuthStatus.loading:
+            return const _SplashScreen();
+
+          // ── Authenticated → Home ──────────────────────────────────────────
+          case ap.AuthStatus.authenticated:
+            return const MainNavigation();
+
+          // ── Not authenticated → Login ─────────────────────────────────────
+          case ap.AuthStatus.unauthenticated:
+            return const LoginScreen();
+        }
+      },
     );
   }
 }
 
 // ─── Splash Screen ────────────────────────────────────────────────────────
-class _Splash extends StatefulWidget {
-  const _Splash();
+class _SplashScreen extends StatefulWidget {
+  const _SplashScreen();
 
   @override
-  State<_Splash> createState() => _SplashState();
+  State<_SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashState extends State<_Splash> with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this, duration: const Duration(milliseconds: 900));
-  late final Animation<double> _scale =
-      Tween(begin: 0.6, end: 1.0).animate(
-          CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
-  late final Animation<double> _opacity =
-      Tween(begin: 0.0, end: 1.0).animate(
-          CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+class _SplashScreenState extends State<_SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+  late final Animation<double> _scale   = Tween(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+  late final Animation<double> _opacity = Tween(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
 
   @override
   void initState() { super.initState(); _ctrl.forward(); }
@@ -113,51 +111,24 @@ class _SplashState extends State<_Splash> with SingleTickerProviderStateMixin {
                 Container(
                   width: 110, height: 110,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF0F2356), Color(0xFF152E6A)],
-                    ),
+                    gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                        colors: [Color(0xFF0F2356), Color(0xFF152E6A)]),
                     borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                        color: AppColors.gold.withOpacity(0.35), width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.gold.withOpacity(0.18),
-                        blurRadius: 50,
-                        offset: const Offset(0, 14),
-                      ),
-                    ],
+                    border: Border.all(color: AppColors.gold.withOpacity(0.35), width: 1.5),
+                    boxShadow: [BoxShadow(color: AppColors.gold.withOpacity(0.18), blurRadius: 50, offset: const Offset(0, 14))],
                   ),
                   child: Stack(alignment: Alignment.center, children: [
                     for (final r in [32.0, 52.0, 70.0])
-                      Container(
-                        width: r, height: r,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                              color: AppColors.blue.withOpacity(0.22)),
-                        ),
-                      ),
-                    const Icon(Icons.add_rounded,
-                        color: AppColors.gold, size: 50),
+                      Container(width: r, height: r, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.blue.withOpacity(0.22)))),
+                    const Icon(Icons.add_rounded, color: AppColors.gold, size: 50),
                   ]),
                 ),
                 const SizedBox(height: 26),
-                Text('Christ',
-                    style: GoogleFonts.nunito(
-                        fontSize: 36, fontWeight: FontWeight.w800,
-                        color: AppColors.white, height: 1.0)),
-                Text('Connect',
-                    style: GoogleFonts.nunito(
-                        fontSize: 36, fontWeight: FontWeight.w800,
-                        color: AppColors.gold, height: 1.1)),
+                Text('Christ',  style: GoogleFonts.nunito(fontSize: 36, fontWeight: FontWeight.w800, color: AppColors.white, height: 1.0)),
+                Text('Connect', style: GoogleFonts.nunito(fontSize: 36, fontWeight: FontWeight.w800, color: AppColors.gold,  height: 1.1)),
                 const SizedBox(height: 10),
-                Text('Your complete Christian ecosystem',
-                    style: GoogleFonts.nunito(
-                        fontSize: 13, color: AppColors.muted,
-                        fontWeight: FontWeight.w500)),
-                const SizedBox(height: 44),
+                Text('Your complete Christian ecosystem', style: GoogleFonts.nunito(fontSize: 13, color: AppColors.muted, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 40),
                 SizedBox(
                   width: 130,
                   child: ClipRRect(
