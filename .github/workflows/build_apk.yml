@@ -36,13 +36,8 @@ jobs:
             -keysize 2048 \
             -validity 10000
 
-      - name: Print SHA1 fingerprint
-        run: |
-          keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -alias androiddebugkey \
-            -storepass android \
-            -keypass android | grep SHA1
+      - name: Create google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
 
       - run: flutter pub get
 
