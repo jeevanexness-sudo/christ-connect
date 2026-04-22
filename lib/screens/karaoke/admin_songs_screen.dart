@@ -429,7 +429,7 @@ class _AdminAddSongSheetState extends State<_AdminAddSongSheet> {
     }
     setState(() { _submitting = true; _error = null; });
     try {
-      final ytId = SongModel._extractId(_ytCtrl.text.trim());
+      final ytId = SongModel.extractYoutubeId(_ytCtrl.text.trim());
       final lines = _lyricsCtrl.text.trim().split('\n')
           .where((l) => l.trim().isNotEmpty).toList();
       final lyrics = lines.asMap().entries.map((e) =>
@@ -616,7 +616,7 @@ class _EditSongSheetState extends State<_EditSongSheet> {
     final lyrics = lines.asMap().entries.map((e) =>
         LyricsLine(text: e.value.trim(), startSeconds: e.key * 8)).toList();
 
-    final ytId = SongModel._extractId(_ytCtrl.text.trim());
+    final ytId = SongModel.extractYoutubeId(_ytCtrl.text.trim());
     await SongService.instance.updateSong(widget.song.id, {
       'title':      _titleCtrl.text.trim(),
       'artist':     _artistCtrl.text.trim(),
