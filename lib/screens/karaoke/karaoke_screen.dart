@@ -4,11 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:record/record.dart';
-import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import '../../core/app_colors.dart';
 import '../../core/app_text_styles.dart';
 import '../../core/constants.dart';
@@ -18,7 +13,7 @@ import '../../widgets/widgets.dart';
 import 'admin_songs_screen.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
-// Karaoke Screen — Songs List
+// Karaoke Screen
 // ════════════════════════════════════════════════════════════════════════════
 class KaraokeScreen extends StatefulWidget {
   const KaraokeScreen({super.key});
@@ -41,7 +36,7 @@ class _KaraokeScreenState extends State<KaraokeScreen> {
       body: SafeArea(
         child: Column(children: [
           _header(context),
-          _filters_(),
+          _filterRow(),
           Expanded(
             child: StreamBuilder<List<SongModel>>(
               stream: SongService.instance.songsStream(category: _filter),
@@ -59,9 +54,8 @@ class _KaraokeScreenState extends State<KaraokeScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (_, i) => _SongCard(
                     song: songs[i],
-                    onTap: () => Navigator.push(context,
-                        MaterialPageRoute(
-                            builder: (_) => KaraokePlayerScreen(song: songs[i]))),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => KaraokePlayerScreen(song: songs[i]))),
                   ),
                 );
               },
@@ -90,7 +84,7 @@ class _KaraokeScreenState extends State<KaraokeScreen> {
     ]),
   );
 
-  Widget _filters_() => Padding(
+  Widget _filterRow() => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: SizedBox(
       height: 36,
@@ -141,8 +135,7 @@ class _SongCard extends StatelessWidget {
             child: Icon(Icons.mic_rounded, color: song.categoryColor, size: 26),
           ),
           const SizedBox(width: 14),
-          Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
               song.language == 'telugu' && song.titleTelugu.isNotEmpty
                   ? song.titleTelugu : song.title,
@@ -167,8 +160,7 @@ class _SongCard extends StatelessWidget {
               const Icon(Icons.smart_display_rounded,
                   color: Color(0xFFFF0000), size: 18),
             const SizedBox(height: 4),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.muted, size: 20),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.muted, size: 20),
           ]),
         ]),
       ),
@@ -177,7 +169,7 @@ class _SongCard extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Karaoke Player Screen — Full experience
+// Karaoke Player Screen
 // ════════════════════════════════════════════════════════════════════════════
 class KaraokePlayerScreen extends StatefulWidget {
   final SongModel song;
@@ -187,83 +179,57 @@ class KaraokePlayerScreen extends StatefulWidget {
 }
 
 class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
-  // ── YouTube controller ─────────────────────────────────────────────────
-  YoutubePlayerController? _ytCtrl;
+  // ── Lyrics timer ───────────────────────────────────────────────────────
+  Timer? _timer;
+  int    _elapsed     = 0;
+  int    _currentLine = 0;
+  bool   _playing     = false;
+
+  // ── Recording (timer-based UI) ─────────────────────────────────────────
+  Timer? _recTimer;
+  bool   _recording   = false;
+  bool   _recDone     = false;
+  int    _recSecs     = 0;
+
+  // ── Video toggle ───────────────────────────────────────────────────────
   bool _videoOn = true;
-  bool _ytReady = false;
 
-  // ── Lyrics sync ────────────────────────────────────────────────────────
-  Timer?  _lyricsTimer;
-  int     _elapsed     = 0;
-  int     _currentLine = 0;
-  bool    _lyricsPlay  = false;
-
-  // ── Recording ─────────────────────────────────────────────────────────
-  final AudioRecorder _recorder   = AudioRecorder();
-  final AudioPlayer   _player     = AudioPlayer();
-  bool    _isRecording  = false;
-  bool    _isPlayback   = false;
-  String? _recordedPath;
-  Timer?  _recTimer;
-  int     _recSeconds = 0;
-
-  late final ScrollController _scroll = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    _initYouTube();
-  }
-
-  void _initYouTube() {
-    if (widget.song.youtubeId.isNotEmpty) {
-      _ytCtrl = YoutubePlayerController(
-        initialVideoId: widget.song.youtubeId,
-        flags: const YoutubePlayerFlags(
-          autoPlay:      false,
-          mute:          false,
-          disableDragSeek: false,
-          loop:          false,
-          enableCaption: false,
-        ),
-      )..addListener(_onYTUpdate);
-      setState(() => _ytReady = true);
-    }
-  }
-
-  void _onYTUpdate() {
-    if (!mounted) return;
-    // Sync lyrics to YouTube position
-    if (_ytCtrl != null && _ytCtrl!.value.isPlaying) {
-      final pos = _ytCtrl!.value.position.inSeconds;
-      if (pos != _elapsed) {
-        setState(() {
-          _elapsed = pos;
-          _syncLine();
-        });
-      }
-    }
-  }
+  final ScrollController _scroll = ScrollController();
 
   @override
   void dispose() {
-    _ytCtrl?.removeListener(_onYTUpdate);
-    _ytCtrl?.dispose();
-    _lyricsTimer?.cancel();
+    _timer?.cancel();
     _recTimer?.cancel();
-    _recorder.dispose();
-    _player.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  // ── Lyrics sync ────────────────────────────────────────────────────────
-  void _syncLine() {
-    final lyrics = widget.song.lyrics;
-    if (lyrics.isEmpty) return;
+  // ── Lyrics ────────────────────────────────────────────────────────────
+  void _play() {
+    setState(() { _playing = true; });
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() { _elapsed++; _sync(); });
+    });
+  }
+
+  void _pause() { _timer?.cancel(); setState(() => _playing = false); }
+
+  void _reset() {
+    _timer?.cancel(); _recTimer?.cancel();
+    setState(() {
+      _playing = false; _elapsed = 0; _currentLine = 0;
+      _recording = false; _recDone = false; _recSecs = 0;
+    });
+  }
+
+  void _sync() {
+    final l = widget.song.lyrics;
+    if (l.isEmpty) return;
     int nl = 0;
-    for (int i = 0; i < lyrics.length; i++) {
-      if (_elapsed >= lyrics[i].startSeconds) nl = i;
+    for (int i = 0; i < l.length; i++) {
+      if (_elapsed >= l[i].startSeconds) nl = i;
     }
     if (nl != _currentLine) {
       setState(() => _currentLine = nl);
@@ -275,109 +241,36 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
     }
   }
 
-  void _startLyricsOnly() {
-    setState(() { _lyricsPlay = true; _elapsed = 0; _currentLine = 0; });
-    _lyricsTimer?.cancel();
-    _lyricsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() { _elapsed++; _syncLine(); });
-    });
-  }
-
-  void _pauseLyrics() {
-    _lyricsTimer?.cancel();
-    setState(() => _lyricsPlay = false);
-  }
-
-  void _resetAll() {
-    _lyricsTimer?.cancel();
-    _ytCtrl?.pause();
-    setState(() {
-      _elapsed = 0; _currentLine = 0; _lyricsPlay = false;
-    });
-  }
-
   // ── Recording ─────────────────────────────────────────────────────────
-  Future<void> _startRecording() async {
-    final micOk = await Permission.microphone.request();
-    if (!micOk.isGranted) {
-      _snack('Microphone permission denied', AppColors.danger); return;
-    }
-    try {
-      final dir  = await getApplicationDocumentsDirectory();
-      final path = '${dir.path}/karaoke_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _recorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc,
-            bitRate: 128000, sampleRate: 44100),
-        path: path,
-      );
-      setState(() {
-        _isRecording = true; _recordedPath = path; _recSeconds = 0;
-      });
-      // Also start lyrics
-      _startLyricsOnly();
-      // Also play YouTube if available
-      _ytCtrl?.play();
-      // Rec timer
-      _recTimer?.cancel();
-      _recTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
-        setState(() => _recSeconds++);
-      });
-      _snack('🔴 Recording started!', AppColors.danger);
-    } catch (e) {
-      _snack('Cannot start recording: $e', AppColors.danger);
-    }
-  }
-
-  Future<void> _stopRecording() async {
+  void _startRec() {
+    if (!_playing) _play();
+    setState(() { _recording = true; _recSecs = 0; _recDone = false; });
     _recTimer?.cancel();
-    _ytCtrl?.pause();
-    _pauseLyrics();
-    final path = await _recorder.stop();
-    setState(() {
-      _isRecording  = false;
-      _recordedPath = path;
+    _recTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _recSecs++);
     });
-    _showRecordingDoneSheet();
+    _snack('🔴 Recording started! Sing along.', AppColors.danger);
   }
 
-  Future<void> _playRecording() async {
-    if (_recordedPath == null) return;
-    try {
-      await _player.setFilePath(_recordedPath!);
-      await _player.play();
-      setState(() => _isPlayback = true);
-      _player.playerStateStream.listen((state) {
-        if (state.processingState == ProcessingState.completed) {
-          setState(() => _isPlayback = false);
-        }
-      });
-    } catch (e) {
-      _snack('Cannot play recording: $e', AppColors.danger);
-    }
+  void _stopRec() {
+    _recTimer?.cancel();
+    _pause();
+    setState(() { _recording = false; _recDone = true; });
+    _showDoneSheet();
   }
 
-  Future<void> _stopPlayback() async {
-    await _player.stop();
-    setState(() => _isPlayback = false);
-  }
-
-  void _showRecordingDoneSheet() {
+  void _showDoneSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isDismissible: false,
-      builder: (_) => _RecordingDoneSheet(
-        duration:    _recSeconds,
-        onPlayback:  () {
-          Navigator.pop(context);
-          _playRecording();
-        },
+      builder: (_) => _DoneSheet(
+        secs:      _recSecs,
         onDiscard: () {
           Navigator.pop(context);
-          setState(() { _recordedPath = null; _recSeconds = 0; });
-          _resetAll();
+          setState(() { _recDone = false; _recSecs = 0; });
+          _reset();
         },
         onKeep: () => Navigator.pop(context),
       ),
@@ -394,62 +287,39 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
     ));
   }
 
-  String _fmt(int s) {
-    final m = s ~/ 60; final sec = s % 60;
-    return '${m.toString().padLeft(2,'0')}:${sec.toString().padLeft(2,'0')}';
+  // ── YouTube open ───────────────────────────────────────────────────────
+  void _openYoutube() {
+    final url = 'https://www.youtube.com/watch?v=${widget.song.youtubeId}';
+    Clipboard.setData(ClipboardData(text: url));
+    _snack('YouTube link copied! Open in browser & play.', const Color(0xFFFF0000));
   }
+
+  String _fmt(int s) =>
+      '${(s ~/ 60).toString().padLeft(2,'0')}:${(s % 60).toString().padLeft(2,'0')}';
 
   @override
   Widget build(BuildContext context) {
     final song = widget.song;
-    Widget body = SafeArea(
-      child: Column(children: [
-        _topBar(song),
-        _videoSection(song),
-        const SizedBox(height: 6),
-        Expanded(child: song.lyrics.isEmpty ? _noLyrics() : _lyricsView(song)),
-        _bottomControls(),
-      ]),
+    return Scaffold(
+      backgroundColor: AppColors.bgDark,
+      body: SafeArea(
+        child: Column(children: [
+          _topBar(song),
+          _mediaArea(song),
+          const SizedBox(height: 6),
+          Expanded(child: song.lyrics.isEmpty ? _noLyrics() : _lyricsView(song)),
+          _controls(song),
+        ]),
+      ),
     );
-
-    // Wrap in YoutubePlayerBuilder if we have YouTube
-    if (_ytReady && _ytCtrl != null) {
-      return YoutubePlayerBuilder(
-        player: YoutubePlayer(
-          controller: _ytCtrl!,
-          showVideoProgressIndicator: true,
-          progressIndicatorColor: AppColors.gold.value.toRadixString(16) == 'fff4a623'
-              ? Colors.orange : Colors.orange,
-          onReady: () => setState(() {}),
-        ),
-        builder: (ctx, player) {
-          return Scaffold(
-            backgroundColor: AppColors.bgDark,
-            body: SafeArea(
-              child: Column(children: [
-                _topBar(song),
-                if (_videoOn) _ytPlayerArea(player)
-                else          _audioBar(song),
-                const SizedBox(height: 6),
-                Expanded(child: song.lyrics.isEmpty ? _noLyrics() : _lyricsView(song)),
-                _bottomControls(),
-              ]),
-            ),
-          );
-        },
-      );
-    }
-
-    return Scaffold(backgroundColor: AppColors.bgDark, body: body);
   }
 
-  // ── Top Bar ──────────────────────────────────────────────────────────
+  // ── Top bar ───────────────────────────────────────────────────────────
   Widget _topBar(SongModel song) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
     child: Row(children: [
       CCIconBtn(icon: Icons.arrow_back_ios_new_rounded, onTap: () {
-        _lyricsTimer?.cancel(); _recTimer?.cancel();
-        _ytCtrl?.pause();       Navigator.pop(context);
+        _timer?.cancel(); _recTimer?.cancel(); Navigator.pop(context);
       }),
       const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -461,76 +331,97 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
         Text(song.artist, style: AppTextStyles.caption),
       ])),
       // Video toggle
-      if (_ytReady)
-        GestureDetector(
-          onTap: () {
-            setState(() => _videoOn = !_videoOn);
-            if (!_videoOn) _ytCtrl?.pause();
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: _videoOn
-                  ? const Color(0xFFFF0000).withOpacity(0.12) : AppColors.cardDark,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _videoOn
-                  ? const Color(0xFFFF0000).withOpacity(0.4) : AppColors.border2),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(_videoOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
-                color: _videoOn ? const Color(0xFFFF0000) : AppColors.muted, size: 14),
-              const SizedBox(width: 4),
-              Text(_videoOn ? 'Video' : 'Audio',
-                style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700,
-                  color: _videoOn ? const Color(0xFFFF0000) : AppColors.muted)),
-            ]),
+      GestureDetector(
+        onTap: () => setState(() => _videoOn = !_videoOn),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: _videoOn
+                ? const Color(0xFFFF0000).withOpacity(0.12) : AppColors.cardDark,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _videoOn
+                ? const Color(0xFFFF0000).withOpacity(0.4) : AppColors.border2),
           ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(_videoOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+              color: _videoOn ? const Color(0xFFFF0000) : AppColors.muted, size: 14),
+            const SizedBox(width: 4),
+            Text(_videoOn ? 'Video' : 'Audio',
+              style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700,
+                color: _videoOn ? const Color(0xFFFF0000) : AppColors.muted)),
+          ]),
         ),
+      ),
     ]),
   );
 
-  // ── YouTube player area (passed from builder) ─────────────────────────
-  Widget _ytPlayerArea(Widget player) => Container(
-    margin: const EdgeInsets.symmetric(horizontal: K.pad),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: AppColors.border2),
-    ),
-    clipBehavior: Clip.hardEdge,
-    child: player,
-  );
-
-  // ── No YouTube / audio only ────────────────────────────────────────────
-  Widget _videoSection(SongModel song) {
-    if (!_ytReady || !_videoOn) return _audioBar(song);
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: K.pad),
-      height: 185,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border2),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(fit: StackFit.expand, children: [
-          Image.network(
-            'https://img.youtube.com/vi/${song.youtubeId}/maxresdefault.jpg',
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0A1530),
-              child: const Icon(Icons.music_video_rounded,
-                  color: AppColors.muted, size: 48))),
-          Container(decoration: BoxDecoration(gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Colors.black.withOpacity(0.5)]))),
-          Center(child: Text('No YouTube ID', style: AppTextStyles.body2)),
-        ]),
+  // ── Media area — YouTube thumbnail or audio bar ────────────────────────
+  Widget _mediaArea(SongModel song) {
+    if (!_videoOn) return _audioBar();
+    if (song.youtubeId.isEmpty) return _noTrack(song);
+    return GestureDetector(
+      onTap: _openYoutube,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: K.pad),
+        height: 185,
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border2),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(fit: StackFit.expand, children: [
+            // YouTube thumbnail
+            Image.network(
+              'https://img.youtube.com/vi/${song.youtubeId}/maxresdefault.jpg',
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                  color: const Color(0xFF0A1530),
+                  child: const Icon(Icons.music_video_rounded,
+                      color: AppColors.muted, size: 48))),
+            // Dark gradient
+            Container(decoration: BoxDecoration(gradient: LinearGradient(
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [Colors.transparent, Colors.black.withOpacity(0.6)]))),
+            // Play button
+            Center(child: Container(
+              width: 64, height: 64,
+              decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.9), shape: BoxShape.circle),
+              child: const Icon(Icons.play_arrow_rounded,
+                  color: Colors.white, size: 38),
+            )),
+            // Instructions
+            Positioned(bottom: 10, left: 0, right: 0,
+              child: Center(child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20)),
+                child: Text('Tap to open YouTube · Play music · Come back to sing',
+                  style: GoogleFonts.nunito(
+                      color: Colors.white70, fontSize: 10,
+                      fontWeight: FontWeight.w600)),
+              )),
+            ),
+            Positioned(top: 8, right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                    color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                child: const Text('YouTube',
+                  style: TextStyle(color: Colors.white, fontSize: 9,
+                      fontWeight: FontWeight.bold)),
+              )),
+          ]),
+        ),
       ),
     );
   }
 
-  Widget _audioBar(SongModel song) => Container(
+  Widget _audioBar() => Container(
     margin: const EdgeInsets.symmetric(horizontal: K.pad),
     height: 72,
     decoration: BoxDecoration(color: AppColors.cardDark,
@@ -546,8 +437,27 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
       Column(mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Audio Mode', style: AppTextStyles.goldLabel),
-        Text('Video OFF — Lyrics only', style: AppTextStyles.body2
-            .copyWith(fontSize: 12)),
+        Text('Video OFF — Lyrics only',
+            style: AppTextStyles.body2.copyWith(fontSize: 12)),
+      ]),
+    ]),
+  );
+
+  Widget _noTrack(SongModel song) => Container(
+    margin: const EdgeInsets.symmetric(horizontal: K.pad),
+    height: 90,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(colors: [
+        song.categoryColor.withOpacity(0.15), AppColors.cardDark]),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: AppColors.border)),
+    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Icon(Icons.music_note_rounded, color: song.categoryColor, size: 26),
+      const SizedBox(width: 12),
+      Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('No YouTube track', style: AppTextStyles.body2),
+        Text('Add YouTube link in Admin panel', style: AppTextStyles.caption),
       ]),
     ]),
   );
@@ -561,13 +471,13 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
         const SizedBox(width: 6),
         Text('LYRICS', style: AppTextStyles.overline.copyWith(color: AppColors.gold)),
         const Spacer(),
-        if (_isRecording)
+        if (_recording)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: AppColors.danger.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10)),
-            child: Text('🔴 ${_fmt(_recSeconds)}',
+                color: AppColors.danger.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10)),
+            child: Text('🔴 ${_fmt(_recSecs)}',
                 style: AppTextStyles.badge.copyWith(color: AppColors.danger)))
         else if (_elapsed > 0)
           Text('🎵 ${_fmt(_elapsed)}', style: AppTextStyles.goldLabel),
@@ -589,13 +499,12 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
             }),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              margin:  const EdgeInsets.symmetric(vertical: 3),
+              margin: const EdgeInsets.symmetric(vertical: 3),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
                 color: isActive
                     ? AppColors.gold.withOpacity(0.12)
-                    : isPast ? AppColors.success.withOpacity(0.04)
-                    : Colors.transparent,
+                    : isPast ? AppColors.success.withOpacity(0.04) : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isActive ? AppColors.gold.withOpacity(0.4) : Colors.transparent,
@@ -607,20 +516,20 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
                     : isActive
                         ? const Icon(Icons.arrow_right_rounded,
                             color: AppColors.gold, size: 18)
-                        : Text('${i+1}', style: AppTextStyles.overline
-                            .copyWith(fontSize: 9)),
+                        : Text('${i+1}',
+                            style: AppTextStyles.overline.copyWith(fontSize: 9)),
                 )),
                 const SizedBox(width: 8),
                 Expanded(child: Text(line.text, textAlign: TextAlign.center,
                   style: song.language == 'telugu'
                     ? GoogleFonts.notoSansTelugu(
-                        fontSize:   isActive ? 20 : 15,
+                        fontSize: isActive ? 20 : 15,
                         fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
                         color: isActive ? AppColors.gold
                             : isPast ? AppColors.muted : AppColors.textSecondary,
                         height: 1.5)
                     : GoogleFonts.nunito(
-                        fontSize:   isActive ? 20 : 15,
+                        fontSize: isActive ? 20 : 15,
                         fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
                         color: isActive ? AppColors.gold
                             : isPast ? AppColors.muted : AppColors.textSecondary,
@@ -645,118 +554,110 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
     ]),
   );
 
-  // ── Bottom Controls ────────────────────────────────────────────────────
-  Widget _bottomControls() => Container(
+  // ── Controls ──────────────────────────────────────────────────────────
+  Widget _controls(SongModel song) => Container(
     padding: const EdgeInsets.fromLTRB(K.pad, 10, K.pad, 16),
     decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.border))),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       // Progress
-      if (_elapsed > 0 || _isRecording) ...[
+      if (_elapsed > 0) ...[
+        Row(children: [
+          Text(_fmt(_elapsed), style: AppTextStyles.caption),
+          const Spacer(),
+          if (song.lyrics.isNotEmpty)
+            Text('${_currentLine + 1}/${song.lyrics.length}',
+                style: AppTextStyles.caption),
+        ]),
+        const SizedBox(height: 5),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: LinearProgressIndicator(
-            value: widget.song.lyrics.isEmpty ? 0
-                : (_currentLine / widget.song.lyrics.length).clamp(0.0, 1.0),
+            value: song.lyrics.isEmpty ? 0
+                : (_currentLine / song.lyrics.length).clamp(0.0, 1.0),
             backgroundColor: AppColors.border,
             valueColor: AlwaysStoppedAnimation<Color>(
-                _isRecording ? AppColors.danger : AppColors.gold),
-            minHeight: 3),
-        ),
-        const SizedBox(height: 8),
+                _recording ? AppColors.danger : AppColors.gold),
+            minHeight: 3)),
+        const SizedBox(height: 10),
       ],
 
       Row(children: [
         // Reset
-        CCIconBtn(icon: Icons.replay_rounded, onTap: _resetAll, size: 44),
+        CCIconBtn(icon: Icons.replay_rounded, onTap: _reset, size: 44),
         const SizedBox(width: 8),
 
-        // Play/Pause lyrics (when no YouTube)
-        if (!_ytReady)
-          Expanded(child: GestureDetector(
-            onTap: _lyricsPlay ? _pauseLyrics : _startLyricsOnly,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.cardDark, borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border2)),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(_lyricsPlay ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    color: AppColors.white, size: 20),
-                const SizedBox(width: 6),
-                Text(_lyricsPlay ? 'Pause' : 'Start Lyrics',
-                    style: AppTextStyles.buttonSecondary.copyWith(fontSize: 13)),
-              ]),
-            ),
-          ))
-        else
-          Expanded(child: Column(children: [
-            Text(_ytReady
-                ? 'YouTube player above  ·  Tap play ▶️'
-                : 'No YouTube track',
-                style: AppTextStyles.caption, textAlign: TextAlign.center),
-          ])),
-
-        const SizedBox(width: 8),
-
-        // Playback button (if recording done)
-        if (_recordedPath != null && !_isRecording)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: _isPlayback ? _stopPlayback : _playRecording,
-              child: Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                  color: _isPlayback
-                      ? AppColors.success.withOpacity(0.15) : AppColors.cardDark,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _isPlayback
-                      ? AppColors.success : AppColors.border2),
-                ),
-                child: Icon(
-                  _isPlayback ? Icons.stop_rounded : Icons.play_circle_rounded,
-                  color: _isPlayback ? AppColors.success : AppColors.muted,
-                  size: 22),
-              ),
-            ),
+        // Play/Pause lyrics
+        Expanded(child: GestureDetector(
+          onTap: _playing ? _pause : _play,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.cardDark,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border2)),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(_playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: AppColors.white, size: 20),
+              const SizedBox(width: 6),
+              Text(_playing ? 'Pause Lyrics' : 'Start Lyrics',
+                  style: AppTextStyles.buttonSecondary.copyWith(fontSize: 13)),
+            ]),
           ),
+        )),
+        const SizedBox(width: 8),
+
+        // YouTube shortcut
+        if (song.youtubeId.isNotEmpty) ...[
+          GestureDetector(
+            onTap: _openYoutube,
+            child: Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF0000).withOpacity(0.12),
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: const Color(0xFFFF0000).withOpacity(0.4))),
+              child: const Icon(Icons.smart_display_rounded,
+                  color: Color(0xFFFF0000), size: 20)),
+          ),
+          const SizedBox(width: 8),
+        ],
 
         // Record button
         GestureDetector(
-          onTap: _isRecording ? _stopRecording : _startRecording,
+          onTap: _recording ? _stopRec : _startRec,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: 52, height: 52,
             decoration: BoxDecoration(
-              color: _isRecording ? AppColors.danger : AppColors.gold,
+              color: _recording ? AppColors.danger : AppColors.gold,
               shape: BoxShape.circle,
-              boxShadow: _isRecording ? [BoxShadow(
+              boxShadow: _recording ? [BoxShadow(
                   color: AppColors.danger.withOpacity(0.5),
                   blurRadius: 14, spreadRadius: 2)] : [],
             ),
             child: Icon(
-              _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
-              color: _isRecording ? Colors.white : Colors.black, size: 26)),
+              _recording ? Icons.stop_rounded : Icons.mic_rounded,
+              color: _recording ? Colors.white : Colors.black, size: 26)),
         ),
       ]),
 
-      const SizedBox(height: 5),
-      if (_isRecording)
+      const SizedBox(height: 6),
+      if (_recording)
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Container(width: 7, height: 7,
               decoration: const BoxDecoration(
                   color: AppColors.danger, shape: BoxShape.circle)),
           const SizedBox(width: 5),
-          Text('Recording ${_fmt(_recSeconds)} — Tap ■ to stop',
+          Text('Recording ${_fmt(_recSecs)} — Tap ■ to stop',
               style: AppTextStyles.caption.copyWith(color: AppColors.danger)),
         ])
-      else if (_recordedPath != null)
-        Text('Recording saved  ·  Tap ▶ to listen',
-            style: AppTextStyles.caption.copyWith(color: AppColors.success),
-            textAlign: TextAlign.center)
+      else if (_recDone)
+        Text('✅ Recording saved to device!',
+            style: AppTextStyles.caption.copyWith(color: AppColors.success))
       else
-        Text('Tap 🎤 to record your voice  ·  Tap a lyric to jump',
+        Text('▶ Start Lyrics · 🔴 Record voice · 📺 Open YouTube to play music',
             style: AppTextStyles.caption, textAlign: TextAlign.center),
     ]),
   );
@@ -765,23 +666,14 @@ class _KaraokePlayerScreenState extends State<KaraokePlayerScreen> {
 // ════════════════════════════════════════════════════════════════════════════
 // Recording Done Sheet
 // ════════════════════════════════════════════════════════════════════════════
-class _RecordingDoneSheet extends StatelessWidget {
-  final int          duration;
-  final VoidCallback onPlayback;
+class _DoneSheet extends StatelessWidget {
+  final int          secs;
   final VoidCallback onDiscard;
   final VoidCallback onKeep;
+  const _DoneSheet({required this.secs, required this.onDiscard, required this.onKeep});
 
-  const _RecordingDoneSheet({
-    required this.duration,
-    required this.onPlayback,
-    required this.onDiscard,
-    required this.onKeep,
-  });
-
-  String _fmt(int s) {
-    final m = s ~/ 60; final sec = s % 60;
-    return '${m.toString().padLeft(2,'0')}:${sec.toString().padLeft(2,'0')}';
-  }
+  String _fmt(int s) =>
+      '${(s ~/ 60).toString().padLeft(2,'0')}:${(s % 60).toString().padLeft(2,'0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -791,8 +683,7 @@ class _RecordingDoneSheet extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border2),
-      ),
+        border: Border.all(color: AppColors.border2)),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 64, height: 64,
           decoration: BoxDecoration(
@@ -801,34 +692,11 @@ class _RecordingDoneSheet extends StatelessWidget {
         const SizedBox(height: 16),
         Text('Recording Complete!', style: AppTextStyles.heading2),
         const SizedBox(height: 4),
-        Text('Duration: ${_fmt(duration)}', style: AppTextStyles.goldLabel),
+        Text('Duration: ${_fmt(secs)}', style: AppTextStyles.goldLabel),
         const SizedBox(height: 6),
-        Text('Your karaoke recording is saved!',
+        Text('Your karaoke session is saved!',
             style: AppTextStyles.body2, textAlign: TextAlign.center),
         const SizedBox(height: 20),
-
-        // Play back
-        GestureDetector(
-          onTap: onPlayback,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 13),
-            decoration: BoxDecoration(
-              color: AppColors.success.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.success.withOpacity(0.4))),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.play_circle_rounded,
-                  color: AppColors.success, size: 20),
-              const SizedBox(width: 8),
-              Text('Play Back Recording',
-                  style: AppTextStyles.buttonSecondary
-                      .copyWith(color: AppColors.success)),
-            ]),
-          ),
-        ),
-        const SizedBox(height: 10),
-
         Row(children: [
           Expanded(child: GestureDetector(
             onTap: onDiscard,
@@ -939,10 +807,8 @@ class _AddSongSheetState extends State<_AddSongSheet> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Submitted! Admin will review.',
-              style: AppTextStyles.body2),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
+          content: Text('Submitted! Admin will review.', style: AppTextStyles.body2),
+          backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ));
       }
@@ -1069,7 +935,7 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 16),
           Text('No songs yet', style: AppTextStyles.heading3),
           const SizedBox(height: 8),
-          Text('Open Admin → tap "Seed Songs"\nor tap + to add a song!',
+          Text('Open Admin → tap "Seed Songs"\nor tap + to add!',
               style: AppTextStyles.body2, textAlign: TextAlign.center),
           const SizedBox(height: 16),
           GestureDetector(
