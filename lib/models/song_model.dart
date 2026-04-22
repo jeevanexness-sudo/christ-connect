@@ -8,8 +8,8 @@ class SongModel {
   final String  artist;
   final String  youtubeUrl;
   final String  youtubeId;
-  final String  category;    // 'telugu_worship' | 'english_worship' | 'hymn'
-  final String  language;    // 'telugu' | 'english' | 'both'
+  final String  category;
+  final String  language;
   final List<LyricsLine> lyrics;
   final String  addedBy;
   final bool    isApproved;
@@ -32,13 +32,14 @@ class SongModel {
 
   factory SongModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
+    final ytUrl = d['youtubeUrl'] as String? ?? '';
     return SongModel(
       id:          doc.id,
       title:       d['title']       ?? '',
       titleTelugu: d['titleTelugu'] ?? '',
       artist:      d['artist']      ?? '',
-      youtubeUrl:  d['youtubeUrl']  ?? '',
-      youtubeId:   d['youtubeId']   ?? _extractId(d['youtubeUrl'] ?? ''),
+      youtubeUrl:  ytUrl,
+      youtubeId:   d['youtubeId']   ?? extractYoutubeId(ytUrl),
       category:    d['category']    ?? 'telugu_worship',
       language:    d['language']    ?? 'telugu',
       lyrics:      (d['lyrics'] as List? ?? [])
@@ -64,40 +65,44 @@ class SongModel {
     'createdAt':   Timestamp.fromDate(createdAt),
   };
 
-  static String _extractId(String url) {
+  // ── PUBLIC static helper ───────────────────────────────────────────────
+  static String extractYoutubeId(String url) {
+    if (url.isEmpty) return '';
     final uri = Uri.tryParse(url);
     if (uri == null) return '';
-    if (uri.host.contains('youtu.be')) return uri.pathSegments.first;
+    if (uri.host.contains('youtu.be')) {
+      return uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
+    }
     return uri.queryParameters['v'] ?? '';
   }
 
   Color get categoryColor {
     switch (category) {
-      case 'telugu_worship': return const Color(0xFFF4A623);
+      case 'telugu_worship':  return const Color(0xFFF4A623);
       case 'english_worship': return const Color(0xFF2B5CE6);
-      case 'hymn': return const Color(0xFF10B981);
-      default: return const Color(0xFF7C3AED);
+      case 'hymn':            return const Color(0xFF10B981);
+      default:                return const Color(0xFF7C3AED);
     }
   }
 
   String get categoryLabel {
     switch (category) {
-      case 'telugu_worship': return 'Telugu Worship';
+      case 'telugu_worship':  return 'Telugu Worship';
       case 'english_worship': return 'English Worship';
-      case 'hymn': return 'Hymn';
-      default: return 'Other';
+      case 'hymn':            return 'Hymn';
+      default:                return 'Other';
     }
   }
 }
 
 class LyricsLine {
   final String text;
-  final int    startSeconds; // when to highlight this line
+  final int    startSeconds;
   const LyricsLine({required this.text, required this.startSeconds});
 
   factory LyricsLine.fromMap(Map<String, dynamic> m) => LyricsLine(
-    text:         m['text']         ?? '',
-    startSeconds: m['startSeconds'] ?? 0,
+    text:         m['text']         as String? ?? '',
+    startSeconds: (m['startSeconds'] as num?)?.toInt() ?? 0,
   );
 
   Map<String, dynamic> toMap() => {
