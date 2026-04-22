@@ -17,10 +17,6 @@ dependencies:
   google_sign_in: ^6.2.1
   provider: ^6.1.2
   http: ^1.2.1
-  record: ^5.0.4
-  permission_handler: ^11.3.0
-  path_provider: ^2.1.2
-  just_audio: ^0.9.36
 
 dev_dependencies:
   flutter_test:
